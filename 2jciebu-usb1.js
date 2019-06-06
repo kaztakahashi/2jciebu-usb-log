@@ -1,11 +1,11 @@
 'use strict';
 
-var serialport= require('serialport');
-var os = require('os');
+const serialport = require('serialport')
+const os = require('os');
 
-var comPort='/dev/ttyUSB0';
-var uuid;
-//uuid='00112233aabb';
+const comPort = '/dev/ttyUSB0';
+var id;
+//id='00112233aabb';
 var allowDuplicates = false;
 var filetype = 'json';
 
@@ -25,44 +25,62 @@ for (var i=0; i < process.argv.length; i++) {
   }
 }
 
-
-var inventorycommand = new Buffer([0x52,0x42,0x05,0x00,0x01,0x22,0x50,0xE2,0xBB],'hex');
-var Readline = serialport.parsers.Readline;
-
-var port = new serialport(comPort, {
+const port = new serialport(comPort, {
   baudRate: 115200,
   dataBits: 8,
   parity: 'none',
   stopBits: 1,
   flowControl: false,
   encoding: 'hex'
-},);
-port.open(portOpened);
+},function(err) {
+  if (err) {
+    return console.log('Error: ', err.message)
+  }
+})
 
-	    if ( filetype === 'csv' ) {
-                if ( uuid ) {
-		  var header = 'created, hostname, uuid, temperature, humidity, light, pressure, noise, etvoc, eco2' ; 
-                } else {
-		  var header = 'created, hostname, temperature, humidity, light, pressure, noise, etvoc, eco2' ; 
-                }
-		console.log ( header ) ;
-            }
+var interval1;
+function open() {
+	port.open(function(err2){
+		if (!err2) {
+			return;
+		} else {
+		//console.log('Port is not open: ' + err2.message);
+		setTimeout(open, 10000);
+		}
+	});
+}
 
-function portOpened(err) {
-    setInterval(function(){
-      port.write(inventorycommand,function(err,wr_result){
-            if(err){
-                console.log('ERR: ' + err);
-            }
-      });
-    },1000);
+var writebytes = new Buffer([0x52,0x42,0x05,0x00,0x01,0x22,0x50,0xE2,0xBB],'hex');
 
-    port.on('data',dataReceived);
-    port.on('close', portClosed);
-    port.on('error',errorReceived);
+if ( filetype === 'csv' ) {
+  if ( id ) {
+    var header = 'created, hostname, id, temperature, humidity, light, pressure, noise, etvoc, eco2' ; 
+  } else {
+    var header = 'created, hostname, temperature, humidity, light, pressure, noise, etvoc, eco2' ; 
+  }
+  console.log ( header ) ;
+}
 
-    var data1;
-    function dataReceived(data) {
+port.on('open', function() {
+	clearInterval(interval1);
+	function send() {
+        	port.write(writebytes, function (err3) {
+      		if (err3)
+            port.drain();
+        });
+    }
+    interval1 = setInterval(send, 1000);
+});
+
+port.on('close', function () {
+	clearInterval(interval1);
+	//console.log('CLOSE');
+	open(); // reopen 
+});
+
+var data1;
+port.on('data', function (data) {
+	//console.log('Data:', data)
       var regex = new RegExp(/^5242/);
       var data0 = data.toString('hex');
       var result1;
@@ -77,11 +95,16 @@ function portOpened(err) {
 
       if ( result1 && result1.length === 60 ) {
         var result2 = result1.match(/^5242[a-z0-9]{12}([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})([a-z0-9]{2})[a-z0-9]+$/);
+        //var now = new Date();
         var now = new Date();
+        if ( filetype === 'csv' ) {
+          now = now.toLocaleString('ja-JP','long' );
+        }
+
         var envData = {
           created: now,
           hostname: os.hostname(),
-          uuid: uuid,
+          id: id,
           temperature: parseInt(result2[2]+result2[1],16)/100,
           humidity: parseInt(result2[4]+result2[3],16)/100,
           light: parseInt(result2[6]+result2[5],16),
@@ -90,9 +113,8 @@ function portOpened(err) {
           etvoc: parseInt(result2[14]+result2[13],16),
           eco2: parseInt(result2[16]+result2[15],16)
         };
-        //console.log (JSON.stringify( envData ));
 
-                var result;
+        var result;
 		if ( filetype === 'csv' ) {
                   for ( var key in envData ) {
                     if ( result === undefined ) {
@@ -100,23 +122,18 @@ function portOpened(err) {
                     } else if ( envData[key] ) {
                       result += ',' + envData[key] ;
                     }
-		}
+		  }
                 } else {
 		    result = JSON.stringify( envData );
 		}
                 console.log ( result ) ;
 
 		if ( allowDuplicates !== true ) { process.exit(); }
-
       }
-    }
+})
 
-    function portClosed() {
-      console.log('port closed.')
-    }
+const lineStream = port.pipe(new serialport.parsers.Readline())
 
-    function errorReceived(err) {
-      console.log('error: ' + err);
-    }
-}
+open(); // open manually
+
 
