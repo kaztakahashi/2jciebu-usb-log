@@ -8,8 +8,7 @@
   },
   "license": "ISC",
   "main": "2jciebu-usb1.js",
-  "name": "2jciebu-usb-log"
-  },
+  "name": "2jciebu-usb-log",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
